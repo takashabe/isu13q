@@ -99,10 +99,10 @@ func getUserStatisticsHandler(c echo.Context) error {
 	for _, user := range users {
 		var reactions int64
 		query := `
-		SELECT COUNT(*) FROM users u
-		INNER JOIN livestreams l ON l.user_id = u.id
-		INNER JOIN reactions r ON r.livestream_id = l.id
-		WHERE u.id = ?`
+SELECT COUNT(*)
+FROM livestreams l
+INNER JOIN reactions r ON r.livestream_id = l.id
+WHERE l.user_id = ?`
 		if err := tx.GetContext(ctx, &reactions, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count reactions: "+err.Error())
 		}

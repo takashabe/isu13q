@@ -118,9 +118,9 @@ func initializeHandler(c echo.Context) error {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
 	}
-	if out, err := exec.Command("../clean_public.sh").CombinedOutput(); err != nil {
-		c.Logger().Warnf("clean_public failed with err=%s", string(out))
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
+	if err := os.RemoveAll("public/icons/users/"); err != nil {
+		c.Logger().Warnf("failed to remove icons: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize(remove public): "+err.Error())
 	}
 	if err := rdb.FlushDB(ctx).Err(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to flush redis: "+err.Error())

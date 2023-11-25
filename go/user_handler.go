@@ -133,6 +133,13 @@ func getIconHandler(c echo.Context) error {
 		return c.File(fallbackImage)
 	}
 
+	clientIconHash := c.Request().Header.Get("If-None-Match")
+	if clientIconHash != "" {
+		if clientIconHash == strings.TrimSuffix(fs[0].Name(), ".png") {
+			return c.NoContent(http.StatusNotModified)
+		}
+	}
+
 	return c.File(imagePath + "/" + fs[0].Name())
 }
 

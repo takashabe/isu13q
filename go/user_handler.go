@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"github.com/goccy/go-json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
@@ -157,7 +158,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image_path) VALUES (?, ?)", userID, iconPath)
+	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image, image_path) VALUES (?, '', ?)", userID, iconPath)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}

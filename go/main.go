@@ -4,6 +4,7 @@ package main
 // sqlx的な参考: https://jmoiron.github.io/sqlx/
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -123,11 +124,8 @@ func initializeHandler(c echo.Context) error {
 
 const project = "isu13-406204"
 
-func init() {
-	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/isucon/webapp/isu13_credential.json")
-}
-
 func main() {
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/isucon/webapp/isu13_credential.json")
 	now := time.Now()
 	if err := profiler.Start(profiler.Config{
 		Service:        "isu13",
@@ -137,11 +135,11 @@ func main() {
 		panic(err)
 	}
 
-	shutdown, err := trace.InitProvider()
+	shutdown, err := trace.InitProvider(trace.Config{})
 	if err != nil {
 		panic(err)
 	}
-	defer shutdown()
+	defer shutdown(context.Background())
 
 	e := echo.New()
 	e.Debug = true

@@ -2,81 +2,58 @@ package trace
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
+	"os"
+	"runtime/debug"
 
 	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/xerrors"
 )
 
-// tp 任意のexporterごとにTraceProviderを上書きする.
-var tp = trace.NewNoopTracerProvider()
+type Config struct {
+	Service             string `envconfig:"TRACE_SERVICE"`
+	Provider            string `envconfig:"TRACE_PROVIDER" default:"cloud_trace"`
+	Environment         string `envconfig:"TRACE_ENVIRONMENT" default:"local"`
+	JaegerEndpoint      string `envconfig:"TRACE_JAEGER_ENDPOINT" default:"http://localhost:14268/api/traces"`
+	CloudTraceProjectID string `envconfig:"GCP_PROJECT_ID" default:"isu13-406204"`
+}
 
-const gcpTraceHeader = "X-Cloud-Trace-Context"
+const (
+	ProviderJaeger     = "jaeger"
+	ProviderCloudTrace = "cloud_trace"
+)
 
-// SpanFromRemote X-Cloud-Trace-Context からtrace id, span idを取り出して新規SpanContextに伝播させる
+// TraceIDFromHeader traceparentからtrace idを取り出す
+func TraceIDFromHeader(header http.Header) string {
+	ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(header))
+	return trace.SpanFromContext(ctx).SpanContext().TraceID().String()
+}
+
+// SpanFromRemote traceparentヘッダからtrace id, span idを取り出して分散trace/spanを作成する.
 func SpanFromRemote(ctx context.Context, header http.Header) context.Context {
-	h := header.Get(gcpTraceHeader)
-	if h == "" {
-		return ctx
-	}
-	sc, err := extract(h)
-	if err != nil {
-		return ctx
-	}
-	if sc.IsValid() {
-		return trace.ContextWithRemoteSpanContext(ctx, sc)
-	}
-	return ctx
+	return otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(header))
 }
 
-func extract(h string) (trace.SpanContext, error) {
-	sc := trace.SpanContext{}
-
-	// parse trace id
-	trIdx := strings.Index(h, "/")
-	trHex := h[:trIdx]
-	traceID, err := trace.TraceIDFromHex(trHex)
-	if err != nil {
-		return sc, xerrors.Errorf("trace.TraceIDFromHex %s: %w", trHex, err)
-	}
-	sc = sc.WithTraceID(traceID)
-
-	// parse span id
-	spIdx := strings.Index(h, ";")
-	spanRaw := h[trIdx+1 : spIdx]
-	sid, err := strconv.ParseUint(spanRaw, 10, 64)
-	if err != nil {
-		return sc, fmt.Errorf("failed to parse value: %w", err)
-	}
-	spanID := sc.SpanID()
-	binary.BigEndian.PutUint64(spanID[:], sid)
-	sc = sc.WithSpanID(spanID)
-
-	sc.WithTraceFlags(trace.FlagsSampled)
-	return sc, nil
-}
-
-// Fix: attributesをlib側で定義したinterfaceを使うようにする
+// StartSpan 新しいspanを作成する.
 func StartSpan(ctx context.Context, name string, attributes ...attribute.KeyValue) context.Context {
-	tr := tp.Tracer(name)
-	cctx, span := tr.Start(ctx, name)
+	tr := otel.GetTracerProvider().Tracer(name)
+	cctx, span := tr.Start(ctx, fmt.Sprintf("span-%s", name))
 	if len(attributes) > 0 {
 		span.SetAttributes(attributes...)
 	}
 	return cctx
 }
 
+// EndSpan spanの更新を終了する.
 func EndSpan(ctx context.Context, err error) {
 	span := trace.SpanFromContext(ctx)
 	if err != nil {
@@ -88,29 +65,58 @@ func EndSpan(ctx context.Context, err error) {
 
 // default span attributes
 var (
-	service     = "isu13"
 	environment = "local"
 	version     = "devel"
 )
 
-const (
-	ProviderJaeger     = "jaeger"
-	ProviderCloudTrace = "cloud_trace"
-)
+func InitProvider(conf Config) (shutdownFn, error) {
+	build, ok := debug.ReadBuildInfo()
+	if ok {
+		version = build.Main.Version
+	}
+	if conf.Environment != "" {
+		environment = conf.Environment
+	}
+	service := ""
+	if conf.Service != "" {
+		service = conf.Service
+	} else {
+		service = getDefaultServicename()
+	}
 
-const project = "isu13-406204"
+	// globalで使用するpropagation specを設定する
+	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-func InitProvider() (shutdown func(), _ error) {
-	return initCloudTrace(project)
+	switch conf.Provider {
+	case ProviderJaeger:
+		return initJaeger(conf.JaegerEndpoint, service)
+	case ProviderCloudTrace:
+		return initCloudTrace(conf.CloudTraceProjectID, service)
+	}
+	return nopShutdown, nil
 }
 
-func initJaeger(uri string) (shutdown func(), _ error) {
+func getDefaultServicename() string {
+	rev := os.Getenv("K_REVISION")
+	if rev == "" {
+		return "localhost"
+	}
+	return rev
+}
+
+type shutdownFn func(context.Context) error
+
+var _ shutdownFn = nopShutdown
+
+func nopShutdown(context.Context) error { return nil }
+
+func initJaeger(uri, service string) (shutdownFn, error) {
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(uri)))
 	if err != nil {
 		return nopShutdown, nil
 	}
 
-	tp = sdktrace.NewTracerProvider(
+	provider := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithResource(resource.NewWithAttributes(
@@ -120,12 +126,11 @@ func initJaeger(uri string) (shutdown func(), _ error) {
 			attribute.String("version", version),
 		)),
 	)
-	return nopShutdown, nil
+	otel.SetTracerProvider(provider)
+	return provider.ForceFlush, nil
 }
 
-func nopShutdown() {}
-
-func initCloudTrace(projectID string) (shutdown func(), _ error) {
+func initCloudTrace(projectID, service string) (shutdownFn, error) {
 	exp, err := texporter.New(texporter.WithProjectID(projectID))
 	if err != nil {
 		return nopShutdown, err
@@ -140,7 +145,6 @@ func initCloudTrace(projectID string) (shutdown func(), _ error) {
 			attribute.String("version", version),
 		)),
 	)
-
-	tp = provider
-	return shutdown, nil
+	otel.SetTracerProvider(provider)
+	return provider.ForceFlush, nil
 }

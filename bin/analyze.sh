@@ -4,7 +4,7 @@
 export ALP_FILENAME=/tmp/alp-`date +%H%M%S`
 # alp json -m でidとかまとめられる
 # https://zenn.dev/tkuchiki/articles/how-to-use-alp
-cat /var/log/nginx/access.log | alp json --sort avg -r > $ALP_FILENAME
+cat /var/log/nginx/access.log | alp ltsv --sort avg -r -m '/api/user/.+/icon','api/user/.+/theme','api/user/.+/statistics','api/livestream/.+/reaction','api/livestream/.+/livecomment','api/livestream/.+/enter','/api/livestream/.+/ngwords','/api/livestream/.+/report','/api/livestream/.+/exit','/api/livestream/.+/moderate','/api/livestream/.+/statistics','api/user/.+/livestream' > $ALP_FILENAME
 head -n 30 $ALP_FILENAME | notify_slack
 
 ## mysql

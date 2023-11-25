@@ -113,8 +113,13 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 
 func initializeHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
+	}
+	if out, err := exec.Command("../clean_public.sh").CombinedOutput(); err != nil {
+		c.Logger().Warnf("clean_public failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
 	}
 	if err := rdb.FlushDB(ctx).Err(); err != nil {

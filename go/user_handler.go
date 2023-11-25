@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -30,7 +31,19 @@ const (
 	bcryptDefaultCost        = bcrypt.MinCost
 )
 
-var fallbackImage = "../img/NoImage.jpg"
+var (
+	fallbackImage = "../img/NoImage.jpg"
+	fallbackHash  string
+)
+
+func init() {
+	fallback, err := os.ReadFile(fallbackImage)
+	if err != nil {
+		panic(err)
+	}
+	hash := sha256.Sum256(fallback)
+	fallbackHash = fmt.Sprintf("%x", hash)
+}
 
 type UserModel struct {
 	ID             int64  `db:"id"`
@@ -101,24 +114,26 @@ func getIconHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	var user UserModel
-	if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", username); err != nil {
+	if err := tx.GetContext(ctx, &user, "SELECT id FROM users WHERE name = ?", username); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
-	var imagePath string
-	if err := tx.GetContext(ctx, &imagePath, "SELECT image_path FROM icons WHERE user_id = ?", user.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.File(fallbackImage)
-		} else {
+	imagePath := "public/icons/users/" + fmt.Sprintf("%d", user.ID)
+	fs, err := os.ReadDir(imagePath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
 		}
+		return c.File(fallbackImage)
+	}
+	if len(fs) == 0 {
+		return c.File(fallbackImage)
 	}
 
-	// return c.Blob(http.StatusOK, "image/jpeg", image)
-	return c.File(imagePath)
+	return c.File(imagePath + "/" + fs[0].Name())
 }
 
 func postIconHandler(c echo.Context) error {
@@ -141,40 +156,32 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
 
-	// 3. 画像の保存
-	iconPath := "public/icons/" + fmt.Sprintf("%d-%d.png", userID, time.Now().Unix())
-	err := os.WriteFile(iconPath, req.Image, 0o666)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save icon: "+err.Error())
+	if err := os.RemoveAll("public/icons/users/" + fmt.Sprintf("%d", userID)); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon(dir): "+err.Error())
 	}
 
-	tx, err := dbConn.BeginTxx(ctx, nil)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx, "DELETE FROM icons WHERE user_id = ?", userID); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
-	}
-
-	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image, image_path) VALUES (?, '', ?)", userID, iconPath)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
-	}
-
-	iconID, err := rs.LastInsertId()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get last inserted icon id: "+err.Error())
-	}
-
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
-	}
+	go func() {
+		if err := writeIconWithHash(userID, req.Image); err != nil {
+			c.Logger().Errorf("failed to write icon with hash: %s", err.Error())
+		}
+	}()
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
-		ID: iconID,
+		ID: userID,
 	})
+}
+
+func writeIconWithHash(userID int64, image []byte) error {
+	if err := os.MkdirAll("public/icons/users/"+fmt.Sprintf("%d", userID), 0o755); err != nil {
+		return fmt.Errorf("failed to make dir: %w", err)
+	}
+	iconHash := sha256.Sum256(image)
+	iconPath := fmt.Sprintf("public/icons/users/%d/%x.png", userID, iconHash)
+	err := os.WriteFile(iconPath, image, 0o666)
+	if err != nil {
+		return fmt.Errorf("failed to save icon: %w", err)
+	}
+	return nil
 }
 
 func getMeHandler(c echo.Context) error {
@@ -436,24 +443,38 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		return User{}, err
 	}
 
-	var imagePath string
-	var image []byte
-	if err := tx.GetContext(ctx, &imagePath, "SELECT image_path FROM icons WHERE user_id = ?", userModel.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
+	imagePath := "public/icons/users/" + fmt.Sprintf("%d", userModel.ID)
+	fs, err := os.ReadDir(imagePath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
 			return User{}, err
 		}
-		image, err = os.ReadFile(fallbackImage)
-		if err != nil {
-			return User{}, err
-		}
-	} else {
-		img, err := os.ReadFile(imagePath)
-		if err != nil {
-			return User{}, err
-		}
-		image = img
+		return User{
+			ID:          userModel.ID,
+			Name:        userModel.Name,
+			DisplayName: userModel.DisplayName,
+			Description: userModel.Description,
+			Theme: Theme{
+				ID:       themeModel.ID,
+				DarkMode: themeModel.DarkMode,
+			},
+			IconHash: fallbackHash,
+		}, nil
 	}
-	iconHash := sha256.Sum256(image)
+	if len(fs) == 0 {
+		return User{
+			ID:          userModel.ID,
+			Name:        userModel.Name,
+			DisplayName: userModel.DisplayName,
+			Description: userModel.Description,
+			Theme: Theme{
+				ID:       themeModel.ID,
+				DarkMode: themeModel.DarkMode,
+			},
+			IconHash: fallbackHash,
+		}, nil
+	}
+	hash := strings.TrimSuffix(fs[0].Name(), ".png")
 
 	user := User{
 		ID:          userModel.ID,
@@ -464,7 +485,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 			ID:       themeModel.ID,
 			DarkMode: themeModel.DarkMode,
 		},
-		IconHash: fmt.Sprintf("%x", iconHash),
+		IconHash: hash,
 	}
 
 	return user, nil

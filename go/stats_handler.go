@@ -109,10 +109,14 @@ func getUserStatisticsHandler(c echo.Context) error {
 
 		var tips int64
 		query = `
-		SELECT IFNULL(SUM(l2.tip), 0) FROM users u
-		INNER JOIN livestreams l ON l.user_id = u.id	
-		INNER JOIN livecomments l2 ON l2.livestream_id = l.id
-		WHERE u.id = ?`
+SELECT COALESCE(SUM(lc.tip), 0)
+FROM (
+    SELECT ls.id
+    FROM livestreams ls
+    WHERE ls.user_id = ?
+) AS filtered_livestreams
+INNER JOIN livecomments lc ON lc.livestream_id = filtered_livestreams.id;
+`
 		if err := tx.GetContext(ctx, &tips, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
 		}
@@ -136,8 +140,8 @@ func getUserStatisticsHandler(c echo.Context) error {
 
 	// リアクション数
 	var totalReactions int64
-	query := `SELECT COUNT(*) FROM users u 
-    INNER JOIN livestreams l ON l.user_id = u.id 
+	query := `SELECT COUNT(*) FROM users u
+    INNER JOIN livestreams l ON l.user_id = u.id
     INNER JOIN reactions r ON r.livestream_id = l.id
     WHERE u.name = ?
 	`
@@ -246,7 +250,7 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 		}
 
 		var totalTips int64
-		if err := tx.GetContext(ctx, &totalTips, "SELECT IFNULL(SUM(l2.tip), 0) FROM livestreams l INNER JOIN livecomments l2 ON l.id = l2.livestream_id WHERE l.id = ?", livestream.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := tx.GetContext(ctx, &totalTips, `SELECT IFNULL(SUM(l2.tip), 0) FROM livestreams l INNER JOIN livecomments l2 ON l.id = l2.livestream_id WHERE l.id = ?`, livestream.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
 		}
 

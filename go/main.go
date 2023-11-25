@@ -20,6 +20,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
@@ -111,9 +112,13 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 }
 
 func initializeHandler(c echo.Context) error {
+	ctx := c.Request().Context()
 	if out, err := exec.Command("../sql/init.sh").CombinedOutput(); err != nil {
 		c.Logger().Warnf("init.sh failed with err=%s", string(out))
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize: "+err.Error())
+	}
+	if err := rdb.FlushDB(ctx).Err(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to flush redis: "+err.Error())
 	}
 
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
@@ -123,6 +128,16 @@ func initializeHandler(c echo.Context) error {
 }
 
 const project = "isu13-406204"
+
+var rdb *redis.Client
+
+func init() {
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379", // Redisサーバーのアドレス
+		Password: "",               // パスワード（ない場合は空文字列）
+		DB:       0,                // 使用するDB
+	})
+}
 
 func main() {
 	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/isucon/webapp/isu13_credential.json")

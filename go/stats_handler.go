@@ -9,6 +9,7 @@ import (
 
 	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 )
 
 type LivestreamStatistics struct {
@@ -108,18 +109,24 @@ WHERE l.user_id = ?`
 		}
 
 		var tips int64
-		query = `
-SELECT COALESCE(SUM(lc.tip), 0)
-FROM (
-    SELECT ls.id
-    FROM livestreams ls
-    WHERE ls.user_id = ?
-) AS filtered_livestreams
-INNER JOIN livecomments lc ON lc.livestream_id = filtered_livestreams.id;
-`
-		if err := tx.GetContext(ctx, &tips, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
+		//     query = `
+		// SELECT COALESCE(SUM(lc.tip), 0)
+		// FROM (
+		//     SELECT ls.id
+		//     FROM livestreams ls
+		//     WHERE ls.user_id = ?
+		// ) AS filtered_livestreams
+		// INNER JOIN livecomments lc ON lc.livestream_id = filtered_livestreams.id;
+		// `
+		//     if err := tx.GetContext(ctx, &tips, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		//       return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
+		//     }
+
+		tipValue, err := rdb.Get(ctx, "livecomment:tip:"+strconv.Itoa(int(user.ID))).Int64()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomment:tip: "+err.Error())
 		}
+		tips = tipValue
 
 		score := reactions + tips
 		ranking = append(ranking, UserRankingEntry{

@@ -258,6 +258,10 @@ func postLivecommentHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 
+	if _, err := rdb.IncrBy(ctx, "livecomment:tip:"+strconv.FormatInt(userID, 10), livecommentModel.Tip).Result(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to set tip(redis): "+err.Error())
+	}
+
 	return c.JSON(http.StatusCreated, livecomment)
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -87,6 +88,8 @@ type PostIconResponse struct {
 
 func getIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getIconHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	username := c.Param("username")
 
@@ -118,6 +121,8 @@ func getIconHandler(c echo.Context) error {
 
 func postIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "postIconHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -165,6 +170,8 @@ func postIconHandler(c echo.Context) error {
 
 func getMeHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getMeHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -208,6 +215,9 @@ func getMeHandler(c echo.Context) error {
 func registerHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 	defer c.Request().Body.Close()
+
+	trace.StartSpan(ctx, "registerHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	req := PostUserRequest{}
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
@@ -278,6 +288,9 @@ func loginHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 	defer c.Request().Body.Close()
 
+	trace.StartSpan(ctx, "loginHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	req := LoginRequest{}
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
@@ -341,6 +354,9 @@ func loginHandler(c echo.Context) error {
 // GET /api/user/:username
 func getUserHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getUserHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
 		return err
@@ -375,6 +391,10 @@ func getUserHandler(c echo.Context) error {
 }
 
 func verifyUserSession(c echo.Context) error {
+	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "verifyUserSession")
+	defer trace.EndSpan(ctx, nil)
+
 	sess, err := session.Get(defaultSessionIDKey, c)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "failed to get session")
@@ -399,6 +419,9 @@ func verifyUserSession(c echo.Context) error {
 }
 
 func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (User, error) {
+	trace.StartSpan(ctx, "fillUserResponse")
+	defer trace.EndSpan(ctx, nil)
+
 	themeModel := ThemeModel{}
 	if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
 		return User{}, err

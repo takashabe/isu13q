@@ -11,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
+	"cloud.google.com/go/profiler"
 	"github.com/go-sql-driver/mysql"
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -118,7 +121,28 @@ func initializeHandler(c echo.Context) error {
 	})
 }
 
+const project = "isu13-406204"
+
+func init() {
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/isucon/webapp/isu13_credential.json")
+}
+
 func main() {
+	now := time.Now()
+	if err := profiler.Start(profiler.Config{
+		Service:        "isu13",
+		ServiceVersion: now.String(),
+		ProjectID:      project,
+	}); err != nil {
+		panic(err)
+	}
+
+	shutdown, err := trace.InitProvider()
+	if err != nil {
+		panic(err)
+	}
+	defer shutdown()
+
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(echolog.DEBUG)

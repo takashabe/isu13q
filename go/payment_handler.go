@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/labstack/echo/v4"
 )
 
@@ -12,6 +13,8 @@ type PaymentResult struct {
 
 func GetPaymentResult(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getPaymentResult")
+	defer trace.EndSpan(ctx, nil)
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {

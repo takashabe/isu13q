@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -67,6 +68,8 @@ type NGWord struct {
 
 func getLivecommentsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getLivecommentsHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -121,6 +124,8 @@ func getLivecommentsHandler(c echo.Context) error {
 
 func getNgwords(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getNgwords")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		return err
@@ -160,6 +165,9 @@ func getNgwords(c echo.Context) error {
 
 func postLivecommentHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "postLivecommentHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	defer c.Request().Body.Close()
 
 	if err := verifyUserSession(c); err != nil {
@@ -255,6 +263,8 @@ func postLivecommentHandler(c echo.Context) error {
 
 func reportLivecommentHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "reportLivecommentHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		return err
@@ -330,6 +340,9 @@ func reportLivecommentHandler(c echo.Context) error {
 // NGワードを登録
 func moderateHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "moderateHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	defer c.Request().Body.Close()
 
 	if err := verifyUserSession(c); err != nil {
@@ -423,6 +436,9 @@ func moderateHandler(c echo.Context) error {
 }
 
 func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel LivecommentModel) (Livecomment, error) {
+	trace.StartSpan(ctx, "fillLivecommentResponse")
+	defer trace.EndSpan(ctx, nil)
+
 	commentOwnerModel := UserModel{}
 	if err := tx.GetContext(ctx, &commentOwnerModel, "SELECT * FROM users WHERE id = ?", livecommentModel.UserID); err != nil {
 		return Livecomment{}, err
@@ -454,6 +470,9 @@ func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel 
 }
 
 func fillLivecommentReportResponse(ctx context.Context, tx *sqlx.Tx, reportModel LivecommentReportModel) (LivecommentReport, error) {
+	trace.StartSpan(ctx, "fillLivecommentReportResponse")
+	defer trace.EndSpan(ctx, nil)
+
 	reporterModel := UserModel{}
 	if err := tx.GetContext(ctx, &reporterModel, "SELECT * FROM users WHERE id = ?", reportModel.UserID); err != nil {
 		return LivecommentReport{}, err

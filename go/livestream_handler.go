@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -69,7 +70,13 @@ type ReservationSlotModel struct {
 
 func reserveLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "reserveLivestreamHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	defer c.Request().Body.Close()
+
+	trace.StartSpan(ctx, "reserveLivestreamHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -121,17 +128,15 @@ func reserveLivestreamHandler(c echo.Context) error {
 		}
 	}
 
-	var (
-		livestreamModel = &LivestreamModel{
-			UserID:       int64(userID),
-			Title:        req.Title,
-			Description:  req.Description,
-			PlaylistUrl:  req.PlaylistUrl,
-			ThumbnailUrl: req.ThumbnailUrl,
-			StartAt:      req.StartAt,
-			EndAt:        req.EndAt,
-		}
-	)
+	livestreamModel := &LivestreamModel{
+		UserID:       int64(userID),
+		Title:        req.Title,
+		Description:  req.Description,
+		PlaylistUrl:  req.PlaylistUrl,
+		ThumbnailUrl: req.ThumbnailUrl,
+		StartAt:      req.StartAt,
+		EndAt:        req.EndAt,
+	}
 
 	if _, err := tx.ExecContext(ctx, "UPDATE reservation_slots SET slot = slot - 1 WHERE start_at >= ? AND end_at <= ?", req.StartAt, req.EndAt); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to update reservation_slot: "+err.Error())
@@ -172,6 +177,9 @@ func reserveLivestreamHandler(c echo.Context) error {
 
 func searchLivestreamsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "searchLivestreamsHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	keyTagName := c.QueryParam("tag")
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
@@ -239,6 +247,9 @@ func searchLivestreamsHandler(c echo.Context) error {
 
 func getMyLivestreamsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getMyLivestreamsHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	if err := verifyUserSession(c); err != nil {
 		return err
 	}
@@ -276,6 +287,9 @@ func getMyLivestreamsHandler(c echo.Context) error {
 
 func getUserLivestreamsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getUserLivestreamsHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	if err := verifyUserSession(c); err != nil {
 		return err
 	}
@@ -320,6 +334,9 @@ func getUserLivestreamsHandler(c echo.Context) error {
 // viewerテーブルの廃止
 func enterLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "enterLivestreamHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
 		return err
@@ -360,6 +377,9 @@ func enterLivestreamHandler(c echo.Context) error {
 
 func exitLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "exitLivestreamHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
 		return err
@@ -394,6 +414,8 @@ func exitLivestreamHandler(c echo.Context) error {
 
 func getLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getLivestreamHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		return err
@@ -433,6 +455,8 @@ func getLivestreamHandler(c echo.Context) error {
 
 func getLivecommentReportsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getLivecommentReportsHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		return err
@@ -485,6 +509,9 @@ func getLivecommentReportsHandler(c echo.Context) error {
 }
 
 func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel LivestreamModel) (Livestream, error) {
+	trace.StartSpan(ctx, "fillLivestreamResponse")
+	defer trace.EndSpan(ctx, nil)
+
 	ownerModel := UserModel{}
 	if err := tx.GetContext(ctx, &ownerModel, "SELECT * FROM users WHERE id = ?", livestreamModel.UserID); err != nil {
 		return Livestream{}, err

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/labstack/echo/v4"
 )
 
@@ -61,6 +62,8 @@ func (r UserRanking) Less(i, j int) bool {
 
 func getUserStatisticsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getUserStatisticsHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -201,6 +204,8 @@ func getUserStatisticsHandler(c echo.Context) error {
 
 func getLivestreamStatisticsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getLivestreamStatisticsHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		return err

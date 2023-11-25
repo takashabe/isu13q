@@ -11,6 +11,13 @@ DOCKER_RMI=sudo docker rmi -f
 DESTDIR=.
 TAG=isupipe:latest
 
+.PHONY: all
+all: build deploy
+
+.PHONY: deploy
+deploy:
+	./deploy.sh
+
 .PHONY: build
 build:
 	CGO_ENABLED=0 $(LINUX_TARGET_ENV)  $(BUILD) -o $(DESTDIR)/isupipe -ldflags "-s -w"

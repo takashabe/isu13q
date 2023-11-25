@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -35,6 +36,8 @@ type PostReactionRequest struct {
 
 func getReactionsHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getReactionsHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力
@@ -85,6 +88,9 @@ func getReactionsHandler(c echo.Context) error {
 
 func postReactionHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "postReactionHandler")
+	defer trace.EndSpan(ctx, nil)
+
 	livestreamID, err := strconv.Atoi(c.Param("livestream_id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "livestream_id in path must be integer")
@@ -142,6 +148,9 @@ func postReactionHandler(c echo.Context) error {
 }
 
 func fillReactionResponse(ctx context.Context, tx *sqlx.Tx, reactionModel ReactionModel) (Reaction, error) {
+	trace.StartSpan(ctx, "fillReactionResponse")
+	defer trace.EndSpan(ctx, nil)
+
 	userModel := UserModel{}
 	if err := tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", reactionModel.UserID); err != nil {
 		return Reaction{}, err

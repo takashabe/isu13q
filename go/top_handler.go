@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/isucon/isucon13/webapp/go/trace"
 	"github.com/labstack/echo/v4"
 )
 
@@ -24,6 +25,8 @@ type TagsResponse struct {
 
 func getTagHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getTagHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {
@@ -56,6 +59,8 @@ func getTagHandler(c echo.Context) error {
 // GET /api/user/:username/theme
 func getStreamerThemeHandler(c echo.Context) error {
 	ctx := c.Request().Context()
+	trace.StartSpan(ctx, "getStreamerThemeHandler")
+	defer trace.EndSpan(ctx, nil)
 
 	if err := verifyUserSession(c); err != nil {
 		// echo.NewHTTPErrorが返っているのでそのまま出力

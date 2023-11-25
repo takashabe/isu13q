@@ -107,8 +107,8 @@ func getIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
-	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
+	var imagePath string
+	if err := tx.GetContext(ctx, &imagePath, "SELECT image_path FROM icons WHERE user_id = ?", user.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.File(fallbackImage)
 		} else {
@@ -116,7 +116,8 @@ func getIconHandler(c echo.Context) error {
 		}
 	}
 
-	return c.Blob(http.StatusOK, "image/jpeg", image)
+	// return c.Blob(http.StatusOK, "image/jpeg", image)
+	return c.File(imagePath)
 }
 
 func postIconHandler(c echo.Context) error {
@@ -139,6 +140,13 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
 
+	// 3. 画像の保存
+	iconPath := "public/icons/" + fmt.Sprintf("%d-%d.png", userID, time.Now().Unix())
+	err := os.WriteFile(iconPath, req.Image, 0o666)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save icon: "+err.Error())
+	}
+
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to begin transaction: "+err.Error())
@@ -149,7 +157,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image) VALUES (?, ?)", userID, req.Image)
+	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image_path) VALUES (?, ?)", userID, iconPath)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}
@@ -427,8 +435,9 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		return User{}, err
 	}
 
+	var imagePath string
 	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
+	if err := tx.GetContext(ctx, &imagePath, "SELECT image_path FROM icons WHERE user_id = ?", userModel.ID); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return User{}, err
 		}
@@ -436,6 +445,12 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		if err != nil {
 			return User{}, err
 		}
+	} else {
+		img, err := os.ReadFile(imagePath)
+		if err != nil {
+			return User{}, err
+		}
+		image = img
 	}
 	iconHash := sha256.Sum256(image)
 
